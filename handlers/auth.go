@@ -142,10 +142,9 @@ func MeHandler(c *gin.Context) {
     }
     defer dbConn.Close()
 
-    // Выполнение запроса к базе данных
     user, err := services.GetUserByID(dbConn, int(userIDFloat))
     if err != nil {
-        fmt.Printf("Ошибка поиска пользователя по ID: %v\n", err) // Логирование ошибки
+        fmt.Printf("Ошибка поиска пользователя по ID: %v\n", err)
         c.JSON(http.StatusNotFound, gin.H{
             "error": "Пользователь не найден",
         })
@@ -155,10 +154,12 @@ func MeHandler(c *gin.Context) {
     // Возвращение данных пользователя с логом
     fmt.Printf("Данные пользователя успешно получены для userID: %v\n", userIDFloat) // Лог успешного получения данных
     c.JSON(http.StatusOK, gin.H{
+        "user_id":       int(userIDFloat), // Добавляем user_id в ответ
         "username":      user.Username,
         "email":         user.Email,
     })
 }
+
 
 
 

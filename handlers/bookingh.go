@@ -130,6 +130,9 @@ func GetUserBookingsHandler(c *gin.Context) {
 		bookings = append(bookings, booking)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"bookings": bookings})
+	c.JSON(http.StatusOK, gin.H{
+        "userID":   userID,
+        "bookings": bookings,
+    })
 }
 
