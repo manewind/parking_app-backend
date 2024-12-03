@@ -111,7 +111,6 @@ func LoginHandler(c *gin.Context) {
 }
 
 func MeHandler(c *gin.Context) {
-    // Получение userID из контекста
     userID, ok := c.Get("user_id")
     if !ok {
         c.JSON(http.StatusInternalServerError, gin.H{
@@ -120,7 +119,6 @@ func MeHandler(c *gin.Context) {
         return
     }
 
-    // Преобразование userID в float64
     userIDFloat, ok := userID.(float64)
     if !ok {
         c.JSON(http.StatusInternalServerError, gin.H{
@@ -143,6 +141,7 @@ func MeHandler(c *gin.Context) {
     defer dbConn.Close()
 
     user, err := services.GetUserByID(dbConn, int(userIDFloat))
+    fmt.Println(user,err)
     if err != nil {
         fmt.Printf("Ошибка поиска пользователя по ID: %v\n", err)
         c.JSON(http.StatusNotFound, gin.H{

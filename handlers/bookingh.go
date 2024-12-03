@@ -8,6 +8,7 @@ import (
     "github.com/gin-gonic/gin"
     "net/http"
     "time"
+    "strconv"
 )
 
 func BookSpotHandler(c *gin.Context) {
@@ -99,40 +100,66 @@ func GetAvailableSpotsHandler(c *gin.Context) {
 
 
 func GetUserBookingsHandler(c *gin.Context) {
-	userID := c.Param("userID")
+    userIDStr := c.Param("userID")
+    fmt.Printf("Получен userID из запроса: %s\n", userIDStr)
 
-	dbConn, err := db.ConnectToDB()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
-		})
-		return
-	}
-	defer dbConn.Close()
+    // Преобразуем userID из строки в целое число
+    userID, err := strconv.Atoi(userIDStr)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Неверный формат userID, ожидается число",
+        })
+        return
+    }
 
-	var bookings []models.Booking
-	query := "SELECT * FROM bookings WHERE user_id = $1"
-	rows, err := dbConn.Query(query, userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("Ошибка при получении бронирований: %v", err),
-		})
-		return
-	}
-	defer rows.Close()
+    fmt.Printf("Преобразованный userID: %d\n", userID)
 
-	for rows.Next() {
-		var booking models.Booking
-		if err := rows.Scan(&booking.ID, &booking.UserID, &booking.ParkingSlotID, &booking.StartTime, &booking.EndTime, &booking.Status, &booking.CreatedAt, &booking.UpdatedAt); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения данных"})
-			return
-		}
-		bookings = append(bookings, booking)
-	}
+    // Подключаемся к базе данных
+    dbConn, err := db.ConnectToDB()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
+        })
+        return
+    }
+    defer dbConn.Close()
 
-	c.JSON(http.StatusOK, gin.H{
+    var bookingRequests []models.BookingRequest
+
+    // Запрос к базе данных для получения нужных данных
+    query := "SELECT user_id, parking_slot_id, start_time, end_time FROM bookings WHERE user_id = $1"
+    fmt.Printf("Выполняется запрос: %s с параметром %d\n", query, userID)
+    rows, err := dbConn.Query(query, userID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": fmt.Sprintf("Ошибка при получении бронирований: %v", err),
+        })
+        return
+    }
+    defer rows.Close()
+
+    fmt.Println("Запрос выполнен, начинаем чтение данных из базы")
+    // Чтение данных из результата запроса
+    for rows.Next() {
+        var bookingRequest models.BookingRequest
+        err := rows.Scan(&bookingRequest.UserID, &bookingRequest.ParkingSlotID, &bookingRequest.StartTime, &bookingRequest.EndTime)
+        if err != nil {
+            fmt.Printf("Ошибка чтения данных: %v\n", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения данных"})
+            return
+        }
+        fmt.Printf("Считано бронирование: %+v\n", bookingRequest)
+        bookingRequests = append(bookingRequests, bookingRequest)
+    }
+
+    if len(bookingRequests) == 0 {
+        fmt.Println("Не найдено бронирований для данного пользователя")
+    }
+
+    // Возвращаем данные в ответе
+    fmt.Printf("Возвращаем данные: %+v\n", bookingRequests)
+    c.JSON(http.StatusOK, gin.H{
         "userID":   userID,
-        "bookings": bookings,
+        "bookings": bookingRequests,
     })
 }
-

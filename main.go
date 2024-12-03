@@ -42,10 +42,72 @@ func main() {
         })
     })
 
-    // Регистрируем все маршруты
+    // Роут для получения всех пользователей
+r.GET("/users", func(c *gin.Context) {
+	rows, err := dbConn.Query("SELECT * FROM users")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка выполнения запроса: %v", err),
+		})
+		return
+	}
+	defer rows.Close()
+
+	var users []map[string]interface{}
+	cols, err := rows.Columns()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка получения столбцов: %v", err),
+		})
+		return
+	}
+
+	for rows.Next() {
+		// Создаём массив для значений
+		values := make([]interface{}, len(cols))
+		valuePtrs := make([]interface{}, len(cols))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		// Сканируем строку
+		if err := rows.Scan(valuePtrs...); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("Ошибка чтения строки: %v", err),
+			})
+			return
+		}
+
+		// Преобразуем строку в map
+		rowMap := make(map[string]interface{})
+		for i, col := range cols {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				rowMap[col] = string(b)
+			} else {
+				rowMap[col] = val
+			}
+		}
+
+		users = append(users, rowMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка обработки строк: %v", err),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users": users,
+	})
+})
+
     routes.RegisterRoutes(r)
     routes.SetupRoutes(r)
     routes.BookingRoutes(r)
+	routes.ReviewRoutes(r)
 
     err = r.Run(":8000")
     if err != nil {
