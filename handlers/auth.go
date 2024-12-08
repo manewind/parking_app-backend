@@ -56,8 +56,8 @@ func RegisterHandler(c *gin.Context) {
 }
 
 func LoginHandler(c *gin.Context) {
-    var user models.User
-    err := c.ShouldBindJSON(&user)
+    var loginRequest models.LoginRequest
+    err := c.ShouldBindJSON(&loginRequest)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Неверный формат данных",
@@ -74,7 +74,7 @@ func LoginHandler(c *gin.Context) {
     }
     defer dbConn.Close()
 
-    storedUser, err := services.GetUserByEmail(dbConn, user.Email)
+    storedUser, err := services.GetUserByEmail(dbConn, loginRequest.Email)
     if err != nil {
         c.JSON(http.StatusUnauthorized, gin.H{
             "error": "Пользователь не найден",
@@ -82,16 +82,21 @@ func LoginHandler(c *gin.Context) {
         return
     }
 
+    // Логируем значения для отладки
+    fmt.Println("Хэш из базы данных:", storedUser.PasswordHash)
+    fmt.Println("Пароль, введенный пользователем:", loginRequest.Password)
+
     // Сравниваем хеш пароля
-    err = bcrypt.CompareHashAndPassword([]byte(storedUser.PasswordHash), []byte(user.PasswordHash))
+    err = bcrypt.CompareHashAndPassword([]byte(storedUser.PasswordHash), []byte(loginRequest.Password))
     if err != nil {
+        fmt.Println("Ошибка сравнения паролей:", err)
         c.JSON(http.StatusUnauthorized, gin.H{
             "error": "Неверный пароль",
         })
         return
     }
 
-    // Создание JWT токена
+    // Создаем токен
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
         "user_id": storedUser.ID,
         "exp":     time.Now().Add(time.Hour * 24).Unix(),
@@ -110,6 +115,47 @@ func LoginHandler(c *gin.Context) {
     })
 }
 
+func ResetPasswordHandler(c *gin.Context) {
+    type ResetPasswordRequest struct {
+        Email       string `json:"email" binding:"required"`
+        NewPassword string `json:"new_password" binding:"required"`
+    }
+
+    var req ResetPasswordRequest
+
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
+        return
+    }
+
+    dbConn, err := db.ConnectToDB()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка подключения к базе: %v", err)})
+        return
+    }
+    defer dbConn.Close()
+
+    _, err = services.GetUserByEmail(dbConn, req.Email)
+    if err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь с таким email не найден"})
+        return
+    }
+
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при хешировании пароля"})
+        return
+    }
+
+    if err := services.UpdatePasswordByEmail(dbConn, req.Email, string(hashedPassword)); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка при обновлении пароля: %v", err)})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Пароль успешно обновлён"})
+}
+
+
 func MeHandler(c *gin.Context) {
     userID, ok := c.Get("user_id")
     if !ok {
@@ -127,9 +173,6 @@ func MeHandler(c *gin.Context) {
         return
     }
 
-    // Вывод значения userID
-    fmt.Printf("Проверка userID: %v\n", userIDFloat)
-
     // Подключение к базе данных
     dbConn, err := db.ConnectToDB()
     if err != nil {
@@ -141,23 +184,32 @@ func MeHandler(c *gin.Context) {
     defer dbConn.Close()
 
     user, err := services.GetUserByID(dbConn, int(userIDFloat))
-    fmt.Println(user,err)
     if err != nil {
-        fmt.Printf("Ошибка поиска пользователя по ID: %v\n", err)
         c.JSON(http.StatusNotFound, gin.H{
             "error": "Пользователь не найден",
         })
         return
     }
 
-    // Возвращение данных пользователя с логом
-    fmt.Printf("Данные пользователя успешно получены для userID: %v\n", userIDFloat) // Лог успешного получения данных
+    fmt.Printf("userID в контексте: %v, после преобразования: %d\n", userID, int(userIDFloat))
+
+    isAdmin, err := services.IsAdmin(dbConn, int(userIDFloat))
+    fmt.Println(isAdmin)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Ошибка проверки прав администратора",
+        })
+        return
+    }
+
     c.JSON(http.StatusOK, gin.H{
-        "user_id":       int(userIDFloat), // Добавляем user_id в ответ
-        "username":      user.Username,
-        "email":         user.Email,
+        "user_id":  int(userIDFloat),
+        "username": user.Username,
+        "email":    user.Email,
+        "is_admin": isAdmin,
     })
 }
+
 
 
 

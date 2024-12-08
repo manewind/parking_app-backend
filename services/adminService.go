@@ -19,14 +19,16 @@ func CreateAdmin(db *sql.DB, admin models.Admin) (models.Admin, error) {
         return models.Admin{}, fmt.Errorf("ошибка при проверке существования администратора: %v", err)
     }
 
-    query := `INSERT INTO admins (user_id, role, created_at, updated_at) 
+    
+
+    query := `INSERT INTO admins (user_id, email, created_at, updated_at) 
               OUTPUT INSERTED.id, INSERTED.created_at, INSERTED.updated_at 
-              VALUES (@UserID, @Role, @CreatedAt, @UpdatedAt)`
+              VALUES (@UserID, @email, @CreatedAt, @UpdatedAt)`
     var insertedID int
     var createdAt, updatedAt time.Time
     err = db.QueryRow(query,
         sql.Named("UserID", admin.UserID),
-        sql.Named("Role", admin.Role),
+        sql.Named("email", admin.Email),
         sql.Named("CreatedAt", admin.CreatedAt),
         sql.Named("UpdatedAt", admin.UpdatedAt)).Scan(&insertedID, &createdAt, &updatedAt)
 
@@ -40,31 +42,51 @@ func CreateAdmin(db *sql.DB, admin models.Admin) (models.Admin, error) {
     return admin, nil
 }
 
+func IsAdmin(db *sql.DB, userID int) (bool, error) {
+    admin, err := GetAdminByUserID(db, userID)
+    if err != nil {
+        return false, err
+    }
+    return admin != nil, nil
+}
+
+
+
+
+
+
 // GetAdminByUserID получает администратора по UserID
-func GetAdminByUserID(db *sql.DB, userID int) (models.Admin, error) {
+func GetAdminByUserID(db *sql.DB, userID int) (*models.Admin, error) {
     var admin models.Admin
-    query := `SELECT id, user_id, role, created_at, updated_at 
+    query := `SELECT id, user_id, email, created_at, updated_at 
               FROM admins WHERE user_id = @UserID`
 
-    err := db.QueryRow(query, sql.Named("UserID", userID)).Scan(&admin.ID, &admin.UserID, &admin.Role, &admin.CreatedAt, &admin.UpdatedAt)
+    err := db.QueryRow(query, sql.Named("UserID", userID)).Scan(
+        &admin.ID,
+        &admin.UserID,
+        &admin.Email,
+        &admin.CreatedAt,
+        &admin.UpdatedAt,
+    )
 
     if err != nil {
         if err == sql.ErrNoRows {
-            return models.Admin{}, fmt.Errorf("администратор с таким user_id не найден")
+            return nil, nil // Если администратор не найден
         }
-        return models.Admin{}, fmt.Errorf("ошибка при получении администратора: %v", err)
+        return nil, fmt.Errorf("ошибка при выполнении запроса: %v", err)
     }
 
-    return admin, nil
+    return &admin, nil
 }
+
 
 // GetAdminByID получает администратора по ID
 func GetAdminByID(db *sql.DB, adminID int) (models.Admin, error) {
     var admin models.Admin
-    query := `SELECT id, user_id, role, created_at, updated_at 
+    query := `SELECT id, user_id, email, created_at, updated_at 
               FROM admins WHERE id = @AdminID`
 
-    err := db.QueryRow(query, sql.Named("AdminID", adminID)).Scan(&admin.ID, &admin.UserID, &admin.Role, &admin.CreatedAt, &admin.UpdatedAt)
+    err := db.QueryRow(query, sql.Named("AdminID", adminID)).Scan(&admin.ID, &admin.UserID, &admin.Email, &admin.CreatedAt, &admin.UpdatedAt)
 
     if err != nil {
         if err == sql.ErrNoRows {
@@ -76,14 +98,13 @@ func GetAdminByID(db *sql.DB, adminID int) (models.Admin, error) {
     return admin, nil
 }
 
-// UpdateAdmin обновляет информацию о администраторе
 func UpdateAdmin(db *sql.DB, admin models.Admin) (models.Admin, error) {
     query := `UPDATE admins 
-              SET role = @Role, updated_at = @UpdatedAt 
+              SET email = @Email, updated_at = @UpdatedAt 
               WHERE id = @ID`
     
     _, err := db.Exec(query,
-        sql.Named("Role", admin.Role),
+        sql.Named("email", admin.Email),
         sql.Named("UpdatedAt", admin.UpdatedAt),
         sql.Named("ID", admin.ID))
 

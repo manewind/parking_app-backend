@@ -48,6 +48,26 @@ func GetUserByEmail(db *sql.DB, email string) (models.User, error) {
     return user, nil
 }
 
+func UpdatePasswordByEmail(db *sql.DB, email, newPassword string) error {
+    fmt.Println("Запрос на обновление пароля для email:", email)
+    fmt.Println("Новый пароль:", newPassword)
+
+    query := `UPDATE users SET password_hash = @newPassword, updated_at = CURRENT_TIMESTAMP WHERE email = @Email`
+    
+    fmt.Println("SQL запрос:", query)
+
+    _, err := db.Exec(query, sql.Named("newPassword", newPassword), sql.Named("Email", email))
+    if err != nil {
+        fmt.Println("Ошибка при обновлении пароля:", err)
+        return fmt.Errorf("ошибка при обновлении пароля: %v", err)
+    }
+
+    fmt.Println("Пароль успешно обновлен на:", newPassword)
+    fmt.Println("Пароль успешно обновлен для email:", email)
+    return nil
+}
+
+
 func GetUserByID(db *sql.DB, userID int) (models.User, error) {
     var user models.User
     query := `SELECT id, username, email FROM users WHERE id = @UserID`

@@ -10,4 +10,5 @@ func RegisterRoutes(r *gin.Engine) {
     r.POST("/register", handlers.RegisterHandler)
     r.POST("/login", handlers.LoginHandler)
     r.GET("/me",middleware.AuthMiddleware(),handlers.MeHandler)
+    r.POST("/reset-password",handlers.ResetPasswordHandler)
 }

@@ -51,61 +51,15 @@ func BookSpotHandler(c *gin.Context) {
     c.JSON(http.StatusOK, createdBooking)
 }
 
-func GetAvailableSpotsHandler(c *gin.Context) {
-    startTime := c.Query("start_time")
-    endTime := c.Query("end_time")
-
-    if startTime == "" || endTime == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Missing start_time or end_time"})
-        return
-    }
-
-    // Подключение к базе данных
-    dbConn, err := db.ConnectToDB()
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err)})
-        return
-    }
-    defer dbConn.Close()
-
-    query := `
-    SELECT DISTINCT spot_id 
-    FROM parking_spots 
-    WHERE spot_id NOT IN (
-        SELECT spot_id 
-        FROM bookings 
-        WHERE (start_time, end_time) OVERLAPS ($1, $2)
-    )`
-    rows, err := dbConn.Query(query, startTime, endTime)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-        return
-    }
-    defer rows.Close()
-
-    var availableSpots []int
-    for rows.Next() {
-        var spotID int
-        if err := rows.Scan(&spotID); err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "Error reading data"})
-            return
-        }
-        availableSpots = append(availableSpots, spotID)
-    }
-
-    c.JSON(http.StatusOK, gin.H{
-        "available_spots": availableSpots,
-    })
-}
-
-
 func GetUserBookingsHandler(c *gin.Context) {
+    // Получаем userID из параметров запроса
     userIDStr := c.Param("userID")
     fmt.Printf("Получен userID из запроса: %s\n", userIDStr)
 
-    // Преобразуем userID из строки в целое число
+    // Преобразуем userID в число
     userID, err := strconv.Atoi(userIDStr)
     if err != nil {
+        fmt.Printf("Ошибка преобразования userID: %v\n", err)
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Неверный формат userID, ожидается число",
         })
@@ -117,49 +71,173 @@ func GetUserBookingsHandler(c *gin.Context) {
     // Подключаемся к базе данных
     dbConn, err := db.ConnectToDB()
     if err != nil {
+        fmt.Printf("Ошибка подключения к базе данных: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
         })
         return
     }
     defer dbConn.Close()
+    fmt.Println("Подключение к базе данных успешно!")
 
-    var bookingRequests []models.BookingRequest
+    // Инициализируем пустой массив бронирований
+    bookings := []struct {
+        models.Booking
+        Username string `json:"username"`
+    }{}
 
-    // Запрос к базе данных для получения нужных данных
-    query := "SELECT user_id, parking_slot_id, start_time, end_time FROM bookings WHERE user_id = $1"
+    // Формируем SQL-запрос с JOIN
+    query := `
+        SELECT b.id, b.user_id, b.parking_slot_id, b.start_time, b.end_time, b.status, b.created_at, b.updated_at, u.username
+        FROM bookings b
+        JOIN users u ON b.user_id = u.id
+        WHERE b.user_id = $1
+    `
     fmt.Printf("Выполняется запрос: %s с параметром %d\n", query, userID)
+
+    // Выполняем запрос к базе данных
     rows, err := dbConn.Query(query, userID)
     if err != nil {
+        fmt.Printf("Ошибка выполнения запроса: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": fmt.Sprintf("Ошибка при получении бронирований: %v", err),
         })
         return
     }
     defer rows.Close()
-
     fmt.Println("Запрос выполнен, начинаем чтение данных из базы")
-    // Чтение данных из результата запроса
+
+    // Читаем данные из результата запроса
     for rows.Next() {
-        var bookingRequest models.BookingRequest
-        err := rows.Scan(&bookingRequest.UserID, &bookingRequest.ParkingSlotID, &bookingRequest.StartTime, &bookingRequest.EndTime)
+        var booking struct {
+            models.Booking
+            Username string `json:"username"`
+        }
+        err := rows.Scan(
+            &booking.ID,
+            &booking.UserID,
+            &booking.ParkingSlotID,
+            &booking.StartTime,
+            &booking.EndTime,
+            &booking.Status,
+            &booking.CreatedAt,
+            &booking.UpdatedAt,
+            &booking.Username,
+        )
         if err != nil {
             fmt.Printf("Ошибка чтения данных: %v\n", err)
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения данных"})
+            c.JSON(http.StatusInternalServerError, gin.H{
+                "error": "Ошибка чтения данных",
+            })
             return
         }
-        fmt.Printf("Считано бронирование: %+v\n", bookingRequest)
-        bookingRequests = append(bookingRequests, bookingRequest)
+        fmt.Printf("Считано бронирование: %+v\n", booking)
+        bookings = append(bookings, booking)
     }
 
-    if len(bookingRequests) == 0 {
+    // Проверяем наличие ошибок при обработке строк
+    if err := rows.Err(); err != nil {
+        fmt.Printf("Ошибка обработки строк результата запроса: %v\n", err)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Ошибка обработки строк результата запроса",
+        })
+        return
+    }
+
+    // Логируем результат
+    if len(bookings) == 0 {
         fmt.Println("Не найдено бронирований для данного пользователя")
+    } else {
+        fmt.Printf("Найдено бронирований: %d\n", len(bookings))
     }
 
     // Возвращаем данные в ответе
-    fmt.Printf("Возвращаем данные: %+v\n", bookingRequests)
+    fmt.Printf("Возвращаем данные: %+v\n", bookings)
     c.JSON(http.StatusOK, gin.H{
         "userID":   userID,
-        "bookings": bookingRequests,
+        "bookings": bookings,
     })
 }
+
+
+func GetAllBookingsHandler(c *gin.Context) {
+    // Подключаемся к базе данных
+    dbConn, err := db.ConnectToDB()
+    if err != nil {
+        fmt.Printf("Ошибка подключения к базе данных: %v\n", err)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
+        })
+        return
+    }
+    defer dbConn.Close()
+    fmt.Println("Подключение к базе данных успешно!")
+
+    // Инициализируем пустой массив для хранения бронирований
+    bookings := []models.Booking{}
+
+    // Формируем SQL-запрос
+    query := "SELECT id, user_id, parking_slot_id, start_time, end_time, status, created_at, updated_at FROM bookings"
+    fmt.Printf("Выполняется запрос: %s\n", query)
+
+    // Выполняем запрос к базе данных
+    rows, err := dbConn.Query(query)
+    if err != nil {
+        fmt.Printf("Ошибка выполнения запроса: %v\n", err)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": fmt.Sprintf("Ошибка при выполнении запроса: %v", err),
+        })
+        return
+    }
+    defer rows.Close()
+    fmt.Println("Запрос выполнен, начинаем чтение данных из базы")
+
+    // Читаем данные из результата запроса
+    for rows.Next() {
+        var booking models.Booking
+        err := rows.Scan(
+            &booking.ID,
+            &booking.UserID,
+            &booking.ParkingSlotID,
+            &booking.StartTime,
+            &booking.EndTime,
+            &booking.Status,
+            &booking.CreatedAt,
+            &booking.UpdatedAt,
+        )
+        if err != nil {
+            fmt.Printf("Ошибка чтения данных: %v\n", err)
+            c.JSON(http.StatusInternalServerError, gin.H{
+                "error": "Ошибка чтения данных",
+            })
+            return
+        }
+        fmt.Printf("Считано бронирование: %+v\n", booking)
+        bookings = append(bookings, booking)
+    }
+
+    // Проверяем наличие ошибок при обработке строк
+    if err := rows.Err(); err != nil {
+        fmt.Printf("Ошибка обработки строк результата запроса: %v\n", err)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Ошибка обработки строк результата запроса",
+        })
+        return
+    }
+
+    // Логируем результат
+    if len(bookings) == 0 {
+        fmt.Println("Не найдено ни одного бронирования")
+    } else {
+        fmt.Printf("Найдено бронирований: %d\n", len(bookings))
+    }
+
+    // Возвращаем данные в ответе
+    fmt.Printf("Возвращаем данные: %+v\n", bookings)
+    c.JSON(http.StatusOK, gin.H{
+        "bookings": bookings,
+    })
+}
+
+
+

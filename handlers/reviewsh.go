@@ -52,14 +52,13 @@ func AddReviewHandler(c *gin.Context) {
         CreatedAt: time.Now(),
     }
 
-    fmt.Println("Запрос на добавление отзыва:", review)  // Логируем данные отзыва
+    fmt.Println("Запрос на добавление отзыва:", review) 
 
-    // Вставка отзыва в базу данных
     query := `INSERT INTO reviews (user_id, rating, comment) 
 				OUTPUT INSERTED.id 
-				VALUES (@user_id, @rating, @comment)` // Используем именованные параметры
+				VALUES (@user_id, @rating, @comment)` 
 
-    fmt.Println("Запрос:", query)  // Логируем сам запрос
+    fmt.Println("Запрос:", query)  
 
     var reviewID int
     err = dbConn.QueryRow(query,
@@ -72,13 +71,12 @@ func AddReviewHandler(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": fmt.Sprintf("Ошибка при добавлении отзыва: %v", err),
         })
-        fmt.Println("Ошибка при выполнении запроса:", err)  // Логируем ошибку выполнения запроса
+        fmt.Println("Ошибка при выполнении запроса:", err)  
         return
     }
 
-    // Возвращаем ID нового отзыва и данные
     review.ID = reviewID
-    fmt.Println("Отзыв успешно добавлен, ID:", reviewID)  // Логируем успешное добавление отзыва
+    fmt.Println("Отзыв успешно добавлен, ID:", reviewID)  
     c.JSON(http.StatusOK, gin.H{
         "message": "Отзыв успешно добавлен",
         "review": review,
