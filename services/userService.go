@@ -84,3 +84,36 @@ func GetUserByID(db *sql.DB, userID int) (models.User, error) {
     return user, nil
 }
 
+func GetAllUsers(db *sql.DB) ([]models.User, error) {
+	// Define a slice to hold the users
+	var users []models.User
+
+	// Query to select all users
+	query := `SELECT id, username, email FROM users`
+
+	// Execute the query and iterate over the rows
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении списка пользователей: %v", err)
+	}
+	defer rows.Close()
+
+	// Iterate over the result set
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(&user.ID, &user.Username, &user.Email)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка при сканировании данных пользователя: %v", err)
+		}
+		// Append the user to the users slice
+		users = append(users, user)
+	}
+
+	// Check for any error that occurred during iteration
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при переборе пользователей: %v", err)
+	}
+
+	return users, nil
+}
+

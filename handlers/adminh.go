@@ -113,3 +113,23 @@ func UpdateAdminHandler(c *gin.Context) {
 	// Отправляем успешный ответ
 	c.JSON(http.StatusOK, updatedAdmin)
 }
+
+func GetAllUsersHandler(c *gin.Context) {
+	dbConn, err := db.ConnectToDB()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
+		})
+		return
+	}
+
+	users, err := services.GetAllUsers(dbConn)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка при получении пользователей: %v", err),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, users)
+}

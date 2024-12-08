@@ -6,11 +6,6 @@ import (
 )
 
 // SetupRoutes настраивает маршруты
-func SetupRoutes(router *gin.Engine) {
-	// Группа маршрутов для администрирования
-	adminRoutes := router.Group("/admin")
-	{
-		// Маршрут для получения администратора по user_id
-		adminRoutes.GET("/:user_id", handlers.GetAdminByUserIDHandler)
-	}
+func SetupRoutes(r *gin.Engine) {
+	r.GET("/getAllUsers",handlers.GetAllUsersHandler)
 }
