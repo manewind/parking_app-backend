@@ -117,3 +117,27 @@ func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	return users, nil
 }
 
+func DeleteUserByID(db *sql.DB, userID int) error {
+    // Проверяем, существует ли пользователь с указанным ID
+    var existingID int
+    checkQuery := `SELECT id FROM users WHERE id = @UserID`
+    err := db.QueryRow(checkQuery, sql.Named("UserID", userID)).Scan(&existingID)
+    
+    if err != nil {
+        if err == sql.ErrNoRows {
+            return fmt.Errorf("пользователь с ID %d не найден", userID)
+        }
+        return fmt.Errorf("ошибка при проверке существования пользователя: %v", err)
+    }
+
+    // Удаляем пользователя
+    deleteQuery := `DELETE FROM users WHERE id = @UserID`
+    _, err = db.Exec(deleteQuery, sql.Named("UserID", userID))
+    if err != nil {
+        return fmt.Errorf("ошибка при удалении пользователя с ID %d: %v", userID, err)
+    }
+
+    return nil
+}
+
+

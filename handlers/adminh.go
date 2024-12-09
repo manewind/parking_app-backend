@@ -133,3 +133,99 @@ func GetAllUsersHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, users)
 }
+
+func GetUserHandler(c *gin.Context) {
+    userIDStr := c.Param("user_id")
+    if userIDStr == "" {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "user_id не предоставлен",
+        })
+        return
+    }
+
+    // Преобразование user_id из строки в int
+    userID, err := strconv.Atoi(userIDStr)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": fmt.Sprintf("Некорректный user_id: %v", err),
+        })
+        return
+    }
+
+    // Подключение к базе данных
+    dbConn, err := db.ConnectToDB()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
+        })
+        return
+    }
+
+    // Получение пользователя по user_id
+    user, err := services.GetUserByID(dbConn, userID)
+    if err != nil {
+        if err.Error() == "пользователь с таким ID не найден" {
+            c.JSON(http.StatusNotFound, gin.H{
+                "error": err.Error(),
+            })
+        } else {
+            c.JSON(http.StatusInternalServerError, gin.H{
+                "error": fmt.Sprintf("Ошибка при получении пользователя: %v", err),
+            })
+        }
+        return
+    }
+
+    // Успешный ответ
+    c.JSON(http.StatusOK, user)
+}
+
+func DeleteUserHandler(c *gin.Context) {
+	// Получение user_id из параметров запроса
+	userIDStr := c.Param("user_id")
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "user_id не предоставлен",
+		})
+		return
+	}
+
+	// Преобразование user_id из строки в int
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("Некорректный user_id: %v", err),
+		})
+		return
+	}
+
+	// Подключение к базе данных
+	dbConn, err := db.ConnectToDB()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
+		})
+		return
+	}
+
+	// Удаление пользователя через сервис
+	err = services.DeleteUserByID(dbConn, userID)
+	if err != nil {
+		if err.Error() == "пользователь с таким ID не найден" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("Ошибка при удалении пользователя: %v", err),
+			})
+		}
+		return
+	}
+
+	// Успешный ответ
+	c.JSON(http.StatusOK, gin.H{"message": "Пользователь успешно удален"})
+}
+
+
+
