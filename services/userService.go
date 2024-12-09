@@ -89,7 +89,7 @@ func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	var users []models.User
 
 	// Query to select all users
-	query := `SELECT id, username, email FROM users`
+	query := `SELECT id, username, email,balance FROM users`
 
 	// Execute the query and iterate over the rows
 	rows, err := db.Query(query)
@@ -101,7 +101,7 @@ func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	// Iterate over the result set
 	for rows.Next() {
 		var user models.User
-		err := rows.Scan(&user.ID, &user.Username, &user.Email)
+		err := rows.Scan(&user.ID, &user.Username, &user.Email,&user.Balance)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка при сканировании данных пользователя: %v", err)
 		}
