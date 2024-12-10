@@ -7,7 +7,7 @@ type Booking struct {
     UserID        int       `json:"user_id"`
     ParkingSlotID int       `json:"parking_slot_id"`
     StartTime     time.Time `json:"start_time"`
-    Username       string    `json:"username"` // Добавлено поле
+    Username       string    `json:"username"` 
     EndTime       time.Time `json:"end_time"`
     Status        string    `json:"status" `
     CreatedAt     time.Time `json:"created_at" `

@@ -51,7 +51,8 @@ func BookSpotHandler(c *gin.Context) {
     c.JSON(http.StatusOK, createdBooking)
 }
 
-func GetUserBookingsHandler(c *gin.Context) {
+
+func GetBookingHandler(c *gin.Context) {
     // Получаем userID из параметров запроса
     userIDStr := c.Param("userID")
     fmt.Printf("Получен userID из запроса: %s\n", userIDStr)
@@ -80,84 +81,22 @@ func GetUserBookingsHandler(c *gin.Context) {
     defer dbConn.Close()
     fmt.Println("Подключение к базе данных успешно!")
 
-    // Инициализируем пустой массив бронирований
-    bookings := []struct {
-        models.Booking
-        Username string `json:"username"`
-    }{}
-
-    // Формируем SQL-запрос с JOIN
-    query := `
-        SELECT b.id, b.user_id, b.parking_slot_id, b.start_time, b.end_time, b.status, b.created_at, b.updated_at, u.username
-        FROM bookings b
-        JOIN users u ON b.user_id = u.id
-        WHERE b.user_id = $1
-    `
-    fmt.Printf("Выполняется запрос: %s с параметром %d\n", query, userID)
-
-    // Выполняем запрос к базе данных
-    rows, err := dbConn.Query(query, userID)
+    // Получаем бронирования пользователя
+    bookings, err := services.GetUserBookings(dbConn, userID)
     if err != nil {
-        fmt.Printf("Ошибка выполнения запроса: %v\n", err)
+        fmt.Printf("Ошибка при получении бронирований: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": fmt.Sprintf("Ошибка при получении бронирований: %v", err),
         })
         return
     }
-    defer rows.Close()
-    fmt.Println("Запрос выполнен, начинаем чтение данных из базы")
 
-    // Читаем данные из результата запроса
-    for rows.Next() {
-        var booking struct {
-            models.Booking
-            Username string `json:"username"`
-        }
-        err := rows.Scan(
-            &booking.ID,
-            &booking.UserID,
-            &booking.ParkingSlotID,
-            &booking.StartTime,
-            &booking.EndTime,
-            &booking.Status,
-            &booking.CreatedAt,
-            &booking.UpdatedAt,
-            &booking.Username,
-        )
-        if err != nil {
-            fmt.Printf("Ошибка чтения данных: %v\n", err)
-            c.JSON(http.StatusInternalServerError, gin.H{
-                "error": "Ошибка чтения данных",
-            })
-            return
-        }
-        fmt.Printf("Считано бронирование: %+v\n", booking)
-        bookings = append(bookings, booking)
-    }
-
-    // Проверяем наличие ошибок при обработке строк
-    if err := rows.Err(); err != nil {
-        fmt.Printf("Ошибка обработки строк результата запроса: %v\n", err)
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "error": "Ошибка обработки строк результата запроса",
-        })
-        return
-    }
-
-    // Логируем результат
-    if len(bookings) == 0 {
-        fmt.Println("Не найдено бронирований для данного пользователя")
-    } else {
-        fmt.Printf("Найдено бронирований: %d\n", len(bookings))
-    }
-
-    // Возвращаем данные в ответе
-    fmt.Printf("Возвращаем данные: %+v\n", bookings)
+    // Возвращаем данные
     c.JSON(http.StatusOK, gin.H{
-        "userID":   userID,
         "bookings": bookings,
     })
 }
+
 
 
 func GetAllBookingsHandler(c *gin.Context) {

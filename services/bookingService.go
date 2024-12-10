@@ -68,3 +68,67 @@ func DeleteBooking(db *sql.DB, bookingID int) error {
 }
 
 
+
+func GetUserBookings(db *sql.DB, userID int) ([]models.Booking, error) {
+    // Запрос на получение всех бронирований для данного userID
+    query := `
+        SELECT 
+            b.id, 
+            b.user_id, 
+            u.username, 
+            b.parking_slot_id, 
+            b.start_time, 
+            b.end_time, 
+            b.status, 
+            b.created_at, 
+            b.updated_at 
+        FROM bookings b
+        JOIN users u ON b.user_id = u.id
+        WHERE b.user_id = @UserID
+    `
+
+    log.Printf("Получение бронирований для пользователя с UserID=%d", userID)
+
+    // Выполняем запрос
+    rows, err := db.Query(query, sql.Named("UserID", userID))
+    if err != nil {
+        log.Printf("Ошибка при выполнении запроса: %v", err)
+        return nil, fmt.Errorf("ошибка при получении бронирований пользователя: %v", err)
+    }
+    defer rows.Close()
+
+    var bookings []models.Booking
+    for rows.Next() {
+        var booking models.Booking
+        var username string
+        err := rows.Scan(
+            &booking.ID,
+            &booking.UserID,
+            &username, // Сканируем username
+            &booking.ParkingSlotID,
+            &booking.StartTime,
+            &booking.EndTime,
+            &booking.Status,
+            &booking.CreatedAt,
+            &booking.UpdatedAt,
+        )
+        if err != nil {
+            log.Printf("Ошибка при чтении данных: %v", err)
+            return nil, fmt.Errorf("ошибка при чтении данных: %v", err)
+        }
+        booking.Username = username // Присваиваем username бронированию
+        bookings = append(bookings, booking)
+    }
+
+    if err := rows.Err(); err != nil {
+        log.Printf("Ошибка при обработке строк результата запроса: %v", err)
+        return nil, fmt.Errorf("ошибка при обработке строк: %v", err)
+    }
+
+    fmt.Println(bookings)
+
+    return bookings, nil
+}
+
+
+

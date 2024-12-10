@@ -108,6 +108,7 @@ r.GET("/users", func(c *gin.Context) {
     routes.SetupRoutes(r)
     routes.BookingRoutes(r)
 	routes.ReviewRoutes(r)
+	routes.BalanceRoutes(r)
 
     err = r.Run(":8000")
     if err != nil {

@@ -50,11 +50,6 @@ func IsAdmin(db *sql.DB, userID int) (bool, error) {
     return admin != nil, nil
 }
 
-
-
-
-
-
 // GetAdminByUserID получает администратора по UserID
 func GetAdminByUserID(db *sql.DB, userID int) (*models.Admin, error) {
     var admin models.Admin
