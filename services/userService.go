@@ -70,10 +70,10 @@ func UpdatePasswordByEmail(db *sql.DB, email, newPassword string) error {
 
 func GetUserByID(db *sql.DB, userID int) (models.User, error) {
     var user models.User
-    // Получаем информацию о пользователе, включая баланс
+
+    // Получаем основную информацию о пользователе
     query := `SELECT id, username, email, balance FROM users WHERE id = @UserID`
     err := db.QueryRow(query, sql.Named("UserID", userID)).Scan(&user.ID, &user.Username, &user.Email, &user.Balance)
-    
     if err != nil {
         if err == sql.ErrNoRows {
             return models.User{}, fmt.Errorf("пользователь с таким ID не найден")
@@ -81,16 +81,36 @@ func GetUserByID(db *sql.DB, userID int) (models.User, error) {
         return models.User{}, fmt.Errorf("ошибка при получении пользователя по ID: %v", err)
     }
 
-    // Получаем все транспортные средства пользователя
+    // Получаем текущий активный абонемент пользователя
+    membershipQuery := `
+    SELECT TOP 1 id, user_id, start_date, end_date, membership_name, price, status, description, booking_hours
+    FROM memberships
+    WHERE user_id = @UserID AND status = 'active'
+    `
+    var membership models.Membership
+    err = db.QueryRow(membershipQuery, sql.Named("UserID", userID)).Scan(
+        &membership.ID, &membership.UserID, &membership.StartDate, &membership.EndDate,
+        &membership.MembershipName, &membership.Price, &membership.Status,
+        &membership.Description, &membership.BookingHours)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            user.Membership = nil // У пользователя нет активного абонемента
+        } else {
+            return models.User{}, fmt.Errorf("ошибка при получении абонемента: %v", err)
+        }
+    } else {
+        user.Membership = &membership // Привязываем активный абонемент к пользователю
+    }
+
+    // Получаем транспортные средства пользователя
     vehicleQuery := `SELECT id, license_plate, model, vehicle_type FROM vehicles WHERE user_id = @UserID`
     rows, err := db.Query(vehicleQuery, sql.Named("UserID", userID))
-    
     if err != nil {
         return models.User{}, fmt.Errorf("ошибка при получении транспортных средств пользователя: %v", err)
     }
     defer rows.Close()
 
-    // Добавляем транспортные средства в пользователя
+    // Добавляем транспортные средства к пользователю
     for rows.Next() {
         var vehicle models.Vehicle
         if err := rows.Scan(&vehicle.ID, &vehicle.LicensePlate, &vehicle.Model, &vehicle.VehicleType); err != nil {
@@ -107,83 +127,102 @@ func GetUserByID(db *sql.DB, userID int) (models.User, error) {
 }
 
 
-func GetAllUsers(db *sql.DB) ([]models.User, error) {
-	// Словарь для сопоставления пользователей по их ID
-	usersMap := make(map[int]*models.User)
 
-	// Обновлённый SQL-запрос с добавлением поля model
-	query := `SELECT 
-            users.id AS user_id,
-            users.username,
-            users.email,
-            vehicles.id AS vehicle_id,
-            vehicles.license_plate,
-            vehicles.vehicle_type,
-            vehicles.model
+func GetAllUsers(db *sql.DB) ([]models.User, error) {
+    usersMap := make(map[int]*models.User)
+
+    query := `
+        SELECT 
+            users.id AS user_id, users.username, users.email,
+            vehicles.id AS vehicle_id, vehicles.license_plate, vehicles.vehicle_type, vehicles.model,
+            memberships.id AS membership_id, memberships.start_date, memberships.end_date, 
+            memberships.membership_name, memberships.price, memberships.status,
+            memberships.description, memberships.booking_hours
         FROM 
             users
         LEFT JOIN 
-            vehicles ON users.id = vehicles.user_id;`
+            vehicles ON users.id = vehicles.user_id
+        LEFT JOIN 
+            memberships ON users.id = memberships.user_id;
+    `
+    rows, err := db.Query(query)
+    if err != nil {
+        return nil, fmt.Errorf("ошибка при получении списка пользователей: %v", err)
+    }
+    defer rows.Close()
 
-	// Выполнение запроса
-	rows, err := db.Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при получении списка пользователей: %v", err)
-	}
-	defer rows.Close()
+    for rows.Next() {
+        var (
+            userID         int
+            username       string
+            email          string
+            vehicleID      sql.NullInt64
+            licensePlate   sql.NullString
+            vehicleType    sql.NullString
+            vehicleModel   sql.NullString
+            membershipID   sql.NullInt64
+            startDate      sql.NullTime
+            endDate        sql.NullTime
+            membershipName sql.NullString
+            price          sql.NullFloat64
+            status         sql.NullString
+            description    sql.NullString
+            bookingHours   sql.NullString
+        )
 
-	// Перебор результатов
-	for rows.Next() {
-		var (
-			userID       int
-			username     string
-			email        string
-			vehicleID    sql.NullInt64
-			licensePlate sql.NullString
-			vehicleType  sql.NullString
-			vehicleModel sql.NullString
-		)
+        err := rows.Scan(
+            &userID, &username, &email,
+            &vehicleID, &licensePlate, &vehicleType, &vehicleModel,
+            &membershipID, &startDate, &endDate, &membershipName,
+            &price, &status, &description, &bookingHours,
+        )
+        if err != nil {
+            return nil, fmt.Errorf("ошибка при сканировании данных пользователя: %v", err)
+        }
 
-		// Чтение строки результата
-		err := rows.Scan(&userID, &username, &email, &vehicleID, &licensePlate, &vehicleType, &vehicleModel)
-		if err != nil {
-			return nil, fmt.Errorf("ошибка при сканировании данных пользователя: %v", err)
-		}
+        if _, exists := usersMap[userID]; !exists {
+            usersMap[userID] = &models.User{
+                ID:       userID,
+                Username: username,
+                Email:    email,
+                Vehicles: []models.Vehicle{},
+            }
+        }
 
-		if _, exists := usersMap[userID]; !exists {
-			usersMap[userID] = &models.User{
-				ID:       userID,
-				Username: username,
-				Email:    email,
-				Vehicles: []models.Vehicle{},
-			}
-		}
+        if vehicleID.Valid {
+            vehicle := models.Vehicle{
+                ID:           int(vehicleID.Int64),
+                LicensePlate: licensePlate.String,
+                VehicleType:  vehicleType.String,
+                Model:        vehicleModel.String,
+            }
+            usersMap[userID].Vehicles = append(usersMap[userID].Vehicles, vehicle)
+        }
 
-		// Добавление информации о транспортных средствах
-		if vehicleID.Valid && licensePlate.Valid && vehicleType.Valid && vehicleModel.Valid {
-			vehicle := models.Vehicle{
-				ID:           int(vehicleID.Int64),
-				LicensePlate: licensePlate.String,
-				VehicleType:  vehicleType.String,
-				Model:        vehicleModel.String,
-			}
-			usersMap[userID].Vehicles = append(usersMap[userID].Vehicles, vehicle)
-		}
-	}
+        if membershipID.Valid {
+            membership := models.Membership{
+                ID:            int(membershipID.Int64),
+                UserID:        userID,
+                StartDate:     startDate.Time,
+                EndDate:       endDate.Time,
+                MembershipName: membershipName.String,
+                Price:         price.Float64,
+                Status:        status.String,
+                Description:   description.String,
+                BookingHours:  bookingHours.String,
+            }
+            usersMap[userID].Membership = &membership
+        }
+    }
 
-	// Проверка на ошибки при переборе строк
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка при переборе пользователей: %v", err)
-	}
+    users := make([]models.User, 0, len(usersMap))
+    for _, user := range usersMap {
+        users = append(users, *user)
+    }
 
-	// Преобразование карты в слайс
-	users := make([]models.User, 0, len(usersMap))
-	for _, user := range usersMap {
-		users = append(users, *user)
-	}
-
-	return users, nil
+    return users, nil
 }
+
 
 
 func DeleteUserByID(db *sql.DB, userID int) error {
