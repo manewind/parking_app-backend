@@ -82,19 +82,20 @@ func LoginHandler(c *gin.Context) {
         return
     }
 
-    // Логируем значения для отладки
-    fmt.Println("Хэш из базы данных:", storedUser.PasswordHash)
-    fmt.Println("Пароль, введенный пользователем:", loginRequest.Password)
+    // Логируем сравниваемые значения
+fmt.Println("Пароль, введенный пользователем:", loginRequest.Password)
+fmt.Println("Хэш из базы данных:", storedUser.PasswordHash)
 
-    // Сравниваем хеш пароля
-    err = bcrypt.CompareHashAndPassword([]byte(storedUser.PasswordHash), []byte(loginRequest.Password))
-    if err != nil {
-        fmt.Println("Ошибка сравнения паролей:", err)
-        c.JSON(http.StatusUnauthorized, gin.H{
-            "error": "Неверный пароль",
-        })
-        return
-    }
+// Сравниваем хеш пароля
+err = bcrypt.CompareHashAndPassword([]byte(storedUser.PasswordHash), []byte(loginRequest.Password))
+if err != nil {
+    fmt.Println("Ошибка сравнения паролей:", err)
+    c.JSON(http.StatusUnauthorized, gin.H{
+        "error": "Неверный пароль",
+    })
+    return
+}
+
 
     // Создаем токен
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -117,8 +118,7 @@ func LoginHandler(c *gin.Context) {
 
 func ResetPasswordHandler(c *gin.Context) {
     type ResetPasswordRequest struct {
-        Email       string `json:"email" binding:"required"`
-        NewPassword string `json:"new_password" binding:"required"`
+        Email string `json:"email" binding:"required"`
     }
 
     var req ResetPasswordRequest
@@ -128,9 +128,10 @@ func ResetPasswordHandler(c *gin.Context) {
         return
     }
 
+    // Проверяем, существует ли пользователь с данным email
     dbConn, err := db.ConnectToDB()
     if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка подключения к базе: %v", err)})
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка подключения к базе данных"})
         return
     }
     defer dbConn.Close()
@@ -141,18 +142,56 @@ func ResetPasswordHandler(c *gin.Context) {
         return
     }
 
-    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+    resetToken, err := services.GenerateResetToken(req.Email)
     if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при хешировании пароля"})
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
+        return
+    }
+    resetLink := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", resetToken)
+    err = services.SendEmail(req.Email, "Сброс пароля", fmt.Sprintf("Перейдите по ссылке для сброса пароля: %s", resetLink))
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка при отправке письма: %v", err)})
         return
     }
 
-    if err := services.UpdatePasswordByEmail(dbConn, req.Email, string(hashedPassword)); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка при обновлении пароля: %v", err)})
-        return
-    }
+    c.JSON(http.StatusOK, gin.H{"message": "Инструкция по сбросу пароля отправлена на указанный email"})
+}
 
-    c.JSON(http.StatusOK, gin.H{"message": "Пароль успешно обновлён"})
+func ResetPassword(c *gin.Context) {
+	type ResetPasswordRequest struct {
+		Token    string `json:"token" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
+		return
+	}
+
+	// Проверяем токен
+	email, err := services.ValidateResetToken(req.Token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Обновляем пароль пользователя в базе данных
+	dbConn, err := db.ConnectToDB()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка подключения к базе данных"})
+		return
+	}
+	defer dbConn.Close()
+
+	// Обновляем пароль в базе данных
+	err = services.UpdatePasswordByEmail(dbConn, email, req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при обновлении пароля"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Пароль успешно сброшен"})
 }
 
 

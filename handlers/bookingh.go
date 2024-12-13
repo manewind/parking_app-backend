@@ -35,7 +35,6 @@ func BookSpotHandler(c *gin.Context) {
         ParkingSlotID: bookingRequest.ParkingSlotID,
         StartTime:     bookingRequest.StartTime,
         EndTime:       bookingRequest.EndTime,
-        Status:        "pending",
         CreatedAt:     time.Now(),
         UpdatedAt:     time.Now(),
     }
@@ -53,7 +52,6 @@ func BookSpotHandler(c *gin.Context) {
 
 
 func GetBookingHandler(c *gin.Context) {
-    // Получаем userID из параметров запроса
     userIDStr := c.Param("userID")
     fmt.Printf("Получен userID из запроса: %s\n", userIDStr)
 
@@ -124,7 +122,6 @@ func GetAllBookingsHandler(c *gin.Context) {
             b.parking_slot_id, 
             b.start_time, 
             b.end_time, 
-            b.status, 
             b.created_at, 
             b.updated_at 
         FROM bookings b
@@ -155,7 +152,6 @@ func GetAllBookingsHandler(c *gin.Context) {
             &booking.ParkingSlotID,
             &booking.StartTime,
             &booking.EndTime,
-            &booking.Status,
             &booking.CreatedAt,
             &booking.UpdatedAt,
         )

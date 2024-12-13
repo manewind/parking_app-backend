@@ -4,6 +4,11 @@ import (
     "database/sql"
     "backend/models"
     "fmt"
+    "github.com/dgrijalva/jwt-go"
+    "golang.org/x/crypto/bcrypt"
+    "gopkg.in/gomail.v2"
+    "time"
+
 )
 
 func CreateUser(db *sql.DB, user models.User) (models.User, error) {
@@ -50,19 +55,23 @@ func GetUserByEmail(db *sql.DB, email string) (models.User, error) {
 
 func UpdatePasswordByEmail(db *sql.DB, email, newPassword string) error {
     fmt.Println("Запрос на обновление пароля для email:", email)
-    fmt.Println("Новый пароль:", newPassword)
+
+    // Хешируем новый пароль
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+    if err != nil {
+        fmt.Println("Ошибка при хешировании пароля:", err)
+        return fmt.Errorf("ошибка при хешировании пароля: %v", err)
+    }
 
     query := `UPDATE users SET password_hash = @newPassword, updated_at = CURRENT_TIMESTAMP WHERE email = @Email`
-    
     fmt.Println("SQL запрос:", query)
 
-    _, err := db.Exec(query, sql.Named("newPassword", newPassword), sql.Named("Email", email))
+    _, err = db.Exec(query, sql.Named("newPassword", hashedPassword), sql.Named("Email", email))
     if err != nil {
         fmt.Println("Ошибка при обновлении пароля:", err)
         return fmt.Errorf("ошибка при обновлении пароля: %v", err)
     }
 
-    fmt.Println("Пароль успешно обновлен на:", newPassword)
     fmt.Println("Пароль успешно обновлен для email:", email)
     return nil
 }
@@ -270,5 +279,70 @@ func TopUpBalance(db *sql.DB, userID int, amount float64) error {
 
     return nil
 }
+
+var jwtSecretKey = []byte("your-secret-key") 
+
+func GenerateResetToken(email string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"email": email,
+		"exp":   time.Now().Add(15 * time.Minute).Unix(), 
+	})
+
+	// Подписываем токен
+	tokenString, err := token.SignedString(jwtSecretKey)
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
+
+func ValidateResetToken(tokenString string) (string, error) {
+	// Парсим токен
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Проверяем метод подписи токена
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("неподдерживаемый метод подписи: %v", token.Header["alg"])
+		}
+		return jwtSecretKey, nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("невалидный токен: %v", err)
+	}
+
+	// Проверяем, что токен действителен
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// Проверка на истечение срока действия
+		if exp, ok := claims["exp"].(float64); ok {
+			if time.Now().Unix() > int64(exp) {
+				return "", fmt.Errorf("срок действия токена истек")
+			}
+		}
+		// Возвращаем email пользователя из токена
+		if email, ok := claims["email"].(string); ok {
+			return email, nil
+		}
+	}
+	return "", fmt.Errorf("невалидный токен")
+}
+
+func SendEmail(to, subject, body string) error {
+    m := gomail.NewMessage()
+    m.SetHeader("From", "tkacklim@gmail.com") // Здесь ваш email
+    m.SetHeader("To", to) // Email получателя
+    m.SetHeader("Subject", subject)
+    m.SetBody("text/html", body)
+
+    // Используйте пароль приложения, если включена двухфакторная аутентификация
+    dialer := gomail.NewDialer("smtp.gmail.com", 587, "tkacklim@gmail.com", "rxkg lhfy oupd sdew")
+
+    // Попытка отправить письмо
+    if err := dialer.DialAndSend(m); err != nil {
+        return fmt.Errorf("не удалось отправить письмо: %v", err)
+    }
+    return nil
+}
+
+
 
 

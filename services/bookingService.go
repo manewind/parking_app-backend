@@ -70,7 +70,6 @@ func DeleteBooking(db *sql.DB, bookingID int) error {
 
 
 func GetUserBookings(db *sql.DB, userID int) ([]models.Booking, error) {
-    // Запрос на получение всех бронирований для данного userID
     query := `
         SELECT 
             b.id, 
@@ -79,7 +78,6 @@ func GetUserBookings(db *sql.DB, userID int) ([]models.Booking, error) {
             b.parking_slot_id, 
             b.start_time, 
             b.end_time, 
-            b.status, 
             b.created_at, 
             b.updated_at 
         FROM bookings b
@@ -108,7 +106,6 @@ func GetUserBookings(db *sql.DB, userID int) ([]models.Booking, error) {
             &booking.ParkingSlotID,
             &booking.StartTime,
             &booking.EndTime,
-            &booking.Status,
             &booking.CreatedAt,
             &booking.UpdatedAt,
         )
