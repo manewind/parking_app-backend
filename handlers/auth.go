@@ -15,8 +15,8 @@ import (
 var jwtSecret = []byte("secret123")
 
 func RegisterHandler(c *gin.Context) {
-    var user models.User
-    err := c.ShouldBindJSON(&user)
+    var registerRequest models.RegisterRequest
+    err := c.ShouldBindJSON(&registerRequest)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Неверный формат данных",
@@ -24,7 +24,11 @@ func RegisterHandler(c *gin.Context) {
         return
     }
 
-    hash, err := bcrypt.GenerateFromPassword([]byte(user.PasswordHash), bcrypt.DefaultCost)
+    // Логируем пароль до хеширования
+    fmt.Println("Пароль перед хешированием:", registerRequest.Password)
+
+    // Хешируем пароль
+    hash, err := bcrypt.GenerateFromPassword([]byte(registerRequest.Password), bcrypt.DefaultCost)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": "Ошибка при хешировании пароля",
@@ -32,7 +36,15 @@ func RegisterHandler(c *gin.Context) {
         return
     }
 
-    user.PasswordHash = string(hash)
+    // Создаем пользователя, сохраняя хэшированный пароль
+    user := models.User{
+        Username:     registerRequest.Username,
+        Email:        registerRequest.Email,
+        PasswordHash: string(hash), // Сохраняем хэшированный пароль
+        Balance:      0,            // Начальный баланс
+        CreatedAt:    time.Now(),
+        UpdatedAt:    time.Now(),
+    }
 
     dbConn, err := db.ConnectToDB()
     if err != nil {
@@ -51,53 +63,73 @@ func RegisterHandler(c *gin.Context) {
         return
     }
 
-    // Ответ с созданным пользователем
     c.JSON(http.StatusOK, createdUser)
 }
 
+
+
 func LoginHandler(c *gin.Context) {
     var loginRequest models.LoginRequest
+
+    // Логируем входящий запрос
+    fmt.Println("Получен запрос на логин:", c.Request.Method, c.Request.URL.Path)
+
+    // Привязка JSON данных
     err := c.ShouldBindJSON(&loginRequest)
     if err != nil {
+        fmt.Println("Ошибка привязки JSON:", err)
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Неверный формат данных",
         })
         return
     }
 
+    // Логируем данные из запроса после привязки
+    fmt.Println("Данные из запроса:", loginRequest)
+
     dbConn, err := db.ConnectToDB()
     if err != nil {
+        fmt.Println("Ошибка подключения к базе данных:", err)
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
         })
         return
     }
-    defer dbConn.Close()
+    defer func() {
+        fmt.Println("Закрытие соединения с базой данных.")
+        dbConn.Close()
+    }()
 
+    // Логируем перед запросом пользователя из базы
+    fmt.Println("Поиск пользователя по email:", loginRequest.Email)
     storedUser, err := services.GetUserByEmail(dbConn, loginRequest.Email)
     if err != nil {
+        fmt.Println("Ошибка при получении пользователя из базы:", err)
         c.JSON(http.StatusUnauthorized, gin.H{
             "error": "Пользователь не найден",
         })
         return
     }
+    fmt.Println("Найден пользователь в базе данных:", storedUser)
 
-    // Логируем сравниваемые значения
-fmt.Println("Пароль, введенный пользователем:", loginRequest.Password)
-fmt.Println("Хэш из базы данных:", storedUser.PasswordHash)
+    // Логируем перед сравнением паролей
+    fmt.Println("Пароль, введённый пользователем:", loginRequest.Password)
+    fmt.Println("Хэш пароля из базы данных:", storedUser.PasswordHash)
 
-// Сравниваем хеш пароля
-err = bcrypt.CompareHashAndPassword([]byte(storedUser.PasswordHash), []byte(loginRequest.Password))
-if err != nil {
-    fmt.Println("Ошибка сравнения паролей:", err)
-    c.JSON(http.StatusUnauthorized, gin.H{
-        "error": "Неверный пароль",
-    })
-    return
-}
+    // Сравнение пароля с хешем
+    err = bcrypt.CompareHashAndPassword([]byte(storedUser.PasswordHash), []byte(loginRequest.Password))
+    if err != nil {
+        fmt.Println("Ошибка сравнения паролей:", err)
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "Неверный пароль",
+        })
+        return
+    }
 
+    fmt.Println("Пароль успешно проверен.")
 
-    // Создаем токен
+    // Создаем JWT токен
+    fmt.Println("Создание JWT токена для пользователя ID:", storedUser.ID)
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
         "user_id": storedUser.ID,
         "exp":     time.Now().Add(time.Hour * 24).Unix(),
@@ -105,16 +137,22 @@ if err != nil {
 
     tokenString, err := token.SignedString(jwtSecret)
     if err != nil {
+        fmt.Println("Ошибка при создании токена:", err)
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": "Ошибка при создании токена",
         })
         return
     }
+    fmt.Println("JWT токен успешно создан:", tokenString)
 
+    // Отправляем ответ
     c.JSON(http.StatusOK, gin.H{
         "token": tokenString,
     })
 }
+
+
+
 
 func ResetPasswordHandler(c *gin.Context) {
     type ResetPasswordRequest struct {

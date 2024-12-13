@@ -91,7 +91,7 @@ func CreateMembership(db *sql.DB, membership models.Membership) (models.Membersh
 
 
 // Получить абонемент по ID
-func GetMembershipByUserID(db *sql.DB, userID int) (models.Membership, error) {
+func GetMembershipByUserID(db *sql.DB, userID int) (*models.Membership, error) {
     var membership models.Membership
     // Обновляем запрос, чтобы искать по user_id
     query := `SELECT id, user_id, start_date, end_date, membership_name, price, status, description, booking_hours
@@ -105,13 +105,14 @@ func GetMembershipByUserID(db *sql.DB, userID int) (models.Membership, error) {
 
     if err != nil {
         if err == sql.ErrNoRows {
-            return models.Membership{}, fmt.Errorf("абонемент для пользователя с таким ID не найден")
+            return nil, nil
         }
-        return models.Membership{}, fmt.Errorf("ошибка при получении абонемента по user_id: %v", err)
+        return nil, fmt.Errorf("ошибка при получении абонемента по user_id: %v", err)
     }
 
-    return membership, nil
+    return &membership, nil
 }
+
 
 
 // Получить все абонементы
