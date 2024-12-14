@@ -36,36 +36,28 @@ func CreateBooking(db *sql.DB, booking models.Booking) (models.Booking, error) {
     return booking, nil
 }
 
+func DeleteRecordByUserID(db *sql.DB, entityType string, userID int) error {
+    var query string
 
-func DeleteBooking(db *sql.DB, bookingID int) error {
-    // Запрос на удаление бронирования по ID
-    query := `DELETE FROM bookings WHERE id = @BookingID`
+    // Определяем SQL-запрос в зависимости от типа сущности
+    switch entityType {
+    case "review":
+        query = `DELETE FROM reviews WHERE user_id = @UserID`
+    case "booking":
+        query = `DELETE FROM bookings WHERE user_id = @UserID`
+    default:
+        return fmt.Errorf("неизвестный тип сущности: %v", entityType)
+    }
 
-    // Логирование запроса
-    log.Printf("Удаление бронирования с ID=%d", bookingID)
-
-    // Выполнение запроса
-    result, err := db.Exec(query, sql.Named("BookingID", bookingID))
+    // Выполняем запрос
+    _, err := db.Exec(query, sql.Named("UserID", userID))
     if err != nil {
-        log.Printf("Ошибка при выполнении запроса: %s", query)
-        return fmt.Errorf("ошибка при удалении бронирования: %v", err)
+        return fmt.Errorf("ошибка при удалении записей для пользователя с ID %d: %v", userID, err)
     }
 
-    // Проверка, был ли удален хотя бы один ряд
-    rowsAffected, err := result.RowsAffected()
-    if err != nil {
-        log.Printf("Ошибка при получении количества затронутых строк: %v", err)
-        return fmt.Errorf("ошибка при получении количества затронутых строк: %v", err)
-    }
-
-    if rowsAffected == 0 {
-        log.Printf("Не найдено бронирования с ID=%d для удаления", bookingID)
-        return fmt.Errorf("не найдено бронирования с ID=%d для удаления", bookingID)
-    }
-
-    log.Printf("Бронирование с ID=%d успешно удалено", bookingID)
     return nil
 }
+
 
 
 
@@ -126,6 +118,8 @@ func GetUserBookings(db *sql.DB, userID int) ([]models.Booking, error) {
 
     return bookings, nil
 }
+
+
 
 
 

@@ -11,18 +11,17 @@ func CreateMembership(db *sql.DB, membership models.Membership) (models.Membersh
     fmt.Printf("Входящие данные для проверки существования абонемента: %+v\n", membership)
 
     var existingID int
-    checkQuery := `SELECT id FROM memberships WHERE user_id = @UserID AND membership_name = @MembershipName`
-    err := db.QueryRow(checkQuery, sql.Named("UserID", membership.UserID), sql.Named("MembershipName", membership.MembershipName)).Scan(&existingID)
+    checkQuery := `SELECT id FROM memberships WHERE user_id = @UserID`
+    err := db.QueryRow(checkQuery, sql.Named("UserID", membership.UserID)).Scan(&existingID)
 
-    // Лог результатов проверки существования
     if err == sql.ErrNoRows {
-        fmt.Println("Абонемент с таким названием для пользователя не найден.")
+        fmt.Println("Абонемент для пользователя не найден. Продолжаем создание.")
     } else if err != nil {
         fmt.Printf("Ошибка при проверке существования абонемента: %v\n", err)
         return models.Membership{}, fmt.Errorf("ошибка при проверке существования абонемента: %v", err)
     } else {
-        fmt.Printf("Абонемент с таким названием уже существует (ID: %d)\n", existingID)
-        return models.Membership{}, fmt.Errorf("пользователь уже имеет абонемент с таким названием")
+        fmt.Printf("Абонемент уже существует (ID: %d)\n", existingID)
+        return models.Membership{}, fmt.Errorf("пользователь уже имеет активный абонемент")
     }
 
     // Проверка баланса пользователя
@@ -87,6 +86,7 @@ func CreateMembership(db *sql.DB, membership models.Membership) (models.Membersh
     fmt.Printf("Успешно вставленный абонемент: %+v\n", membership)
     return membership, nil
 }
+
 
 
 

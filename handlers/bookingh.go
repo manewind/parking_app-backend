@@ -190,46 +190,49 @@ func GetAllBookingsHandler(c *gin.Context) {
     })
 }
 
-func DeleteBookingHandler(c *gin.Context) {
-    // Получаем bookingID из параметров запроса
-    bookingIDStr := c.Param("bookingID")
-    fmt.Printf("Получен bookingID из запроса: %s\n", bookingIDStr)
 
-    // Преобразуем bookingID в число
-    bookingID, err := strconv.Atoi(bookingIDStr)
-    if err != nil {
-        fmt.Printf("Ошибка преобразования bookingID: %v\n", err)
+func DeleteRecordByUserIDHandler(c *gin.Context) {
+    var request struct {
+        UserID     int    `json:"user_id"`
+        EntityType string `json:"entity_type"` 
+    }
+
+    // Парсинг JSON-запроса
+    if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
-            "error": "Неверный формат bookingID, ожидается число",
+            "error": "Неверный формат данных для удаления записей",
         })
         return
     }
 
-    fmt.Printf("Преобразованный bookingID: %d\n", bookingID)
+    // Проверка на пустой тип сущности
+    if request.EntityType == "" {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Тип сущности не может быть пустым",
+        })
+        return
+    }
 
-    // Подключаемся к базе данных
+    // Подключение к базе данных
     dbConn, err := db.ConnectToDB()
     if err != nil {
-        fmt.Printf("Ошибка подключения к базе данных: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
         })
         return
     }
     defer dbConn.Close()
-    fmt.Println("Подключение к базе данных успешно!")
 
-    // Вызываем функцию удаления бронирования
-    err = services.DeleteBooking(dbConn, bookingID)
+    // Удаление записей по userID и типу сущности
+    err = services.DeleteRecordByUserID(dbConn, request.EntityType, request.UserID)
     if err != nil {
-        fmt.Printf("Ошибка при удалении бронирования: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{
-            "error": fmt.Sprintf("Ошибка при удалении бронирования: %v", err),
+            "error": fmt.Sprintf("Ошибка при удалении записей: %v", err),
         })
         return
     }
 
     c.JSON(http.StatusOK, gin.H{
-        "message": fmt.Sprintf("Бронирование с ID=%d успешно удалено", bookingID),
+        "message": fmt.Sprintf("Записи для пользователя с ID %d успешно удалены", request.UserID),
     })
 }

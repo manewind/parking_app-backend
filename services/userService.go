@@ -37,6 +37,36 @@ func CreateUser(db *sql.DB, user models.User) (models.User, error) {
     return user, nil
 }
 
+func NewPayment(db *sql.DB, payment models.Payment)(models.Payment, error){
+
+    tx, err := db.Begin()
+    if err != nil {
+        return models.Payment{}, fmt.Errorf("не удалось начать транзакцию: %v", err)
+    }
+
+    query := `INSERT INTO payments (user_id, amount, payment_date) OUTPUT INSERTED.id VALUES (@UserID, @Amount, CURRENT_TIMESTAMP)`
+    
+    var insertedID int
+    err = tx.QueryRow(
+        query,
+        sql.Named("UserID", payment.UserID),
+        sql.Named("Amount", payment.Amount),
+    ).Scan(&insertedID)
+    if err != nil {
+        return models.Payment{}, fmt.Errorf("ошибка при вставке платежа: %v", err)
+    }
+
+    if err := tx.Commit()
+    err != nil {
+        return models.Payment{}, fmt.Errorf("не удалось зафиксировать транзакцию: %v", err)
+    }
+
+    payment.ID = insertedID
+    return payment, nil
+
+
+}
+
 func GetUserByEmail(db *sql.DB, email string) (models.User, error) {
     var user models.User
     query := `SELECT id, username, email, password_hash FROM users WHERE email = @Email`
@@ -279,6 +309,8 @@ func TopUpBalance(db *sql.DB, userID int, amount float64) error {
 
     return nil
 }
+
+
 
 var jwtSecretKey = []byte("your-secret-key") 
 
