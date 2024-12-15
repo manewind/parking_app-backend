@@ -36,27 +36,31 @@ func CreateBooking(db *sql.DB, booking models.Booking) (models.Booking, error) {
     return booking, nil
 }
 
-func DeleteRecordByUserID(db *sql.DB, entityType string, userID int) error {
+func DeleteRecordByUserID(db *sql.DB, entityType string, userID int, entityID int) error {
     var query string
 
     // Определяем SQL-запрос в зависимости от типа сущности
     switch entityType {
     case "review":
-        query = `DELETE FROM reviews WHERE user_id = @UserID`
+        query = `DELETE FROM reviews WHERE user_id = @UserID AND id = @EntityID`
     case "booking":
-        query = `DELETE FROM bookings WHERE user_id = @UserID`
+        query = `DELETE FROM bookings WHERE user_id = @UserID AND id = @EntityID`
     default:
         return fmt.Errorf("неизвестный тип сущности: %v", entityType)
     }
 
     // Выполняем запрос
-    _, err := db.Exec(query, sql.Named("UserID", userID))
+    _, err := db.Exec(query,
+        sql.Named("UserID", userID),
+        sql.Named("EntityID", entityID),
+    )
     if err != nil {
-        return fmt.Errorf("ошибка при удалении записей для пользователя с ID %d: %v", userID, err)
+        return fmt.Errorf("ошибка при удалении записи с ID %d для пользователя с ID %d: %v", entityID, userID, err)
     }
 
     return nil
 }
+
 
 
 

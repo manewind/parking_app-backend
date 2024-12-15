@@ -10,5 +10,5 @@ func BookingRoutes(r *gin.Engine) {
 	r.POST("/booking",handlers.BookSpotHandler)
 	r.GET("/user-bookings/:userID",handlers.GetBookingHandler )
 	r.GET("/allBookings",handlers.GetAllBookingsHandler)
-	r.DELETE("/delete/:user_id/:entity_type", handlers.DeleteRecordByUserIDHandler)
+	r.DELETE("/delete/:user_id/:entity_type/:entity_id", handlers.DeleteRecordByUserIDHandler)
 }

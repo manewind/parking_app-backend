@@ -192,21 +192,30 @@ func GetAllBookingsHandler(c *gin.Context) {
 
 
 func DeleteRecordByUserIDHandler(c *gin.Context) {
-    var request struct {
-        UserID     int    `json:"user_id"`
-        EntityType string `json:"entity_type"` 
+    // Получение параметров из пути
+    userIDParam := c.Param("user_id")
+    entityType := c.Param("entity_type")
+    entityIDParam := c.Param("entity_id")
+
+    // Преобразование user_id и entity_id в числа
+    userID, err := strconv.Atoi(userIDParam)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Некорректный user_id",
+        })
+        return
     }
 
-    // Парсинг JSON-запроса
-    if err := c.ShouldBindJSON(&request); err != nil {
+    entityID, err := strconv.Atoi(entityIDParam)
+    if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
-            "error": "Неверный формат данных для удаления записей",
+            "error": "Некорректный entity_id",
         })
         return
     }
 
     // Проверка на пустой тип сущности
-    if request.EntityType == "" {
+    if entityType == "" {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Тип сущности не может быть пустым",
         })
@@ -223,16 +232,17 @@ func DeleteRecordByUserIDHandler(c *gin.Context) {
     }
     defer dbConn.Close()
 
-    // Удаление записей по userID и типу сущности
-    err = services.DeleteRecordByUserID(dbConn, request.EntityType, request.UserID)
+    // Удаление записи
+    err = services.DeleteRecordByUserID(dbConn, entityType, userID, entityID)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{
-            "error": fmt.Sprintf("Ошибка при удалении записей: %v", err),
+            "error": fmt.Sprintf("Ошибка при удалении записи: %v", err),
         })
         return
     }
 
     c.JSON(http.StatusOK, gin.H{
-        "message": fmt.Sprintf("Записи для пользователя с ID %d успешно удалены", request.UserID),
+        "message": fmt.Sprintf("Запись с ID %d для пользователя с ID %d успешно удалена", entityID, userID),
     })
 }
+
