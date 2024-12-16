@@ -3,31 +3,29 @@ package handlers
 import (
 	"backend/models"
 	"backend/services"
-	"bufio"
 	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
-
+	"strconv"
 	"github.com/gin-gonic/gin"
+	"github.com/xuri/excelize/v2"
+	"time"
 )
 
 func UploadFileHandler(c *gin.Context, db *sql.DB) {
-	// Получение файла из запроса
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл не передан"})
 		return
 	}
 
-	// Определяем тип файла из переданного параметра
 	fileType := c.PostForm("type")
 	if fileType == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Тип файла не указан"})
 		return
 	}
 
-	// Открываем файл
 	src, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось открыть файл"})
@@ -35,7 +33,6 @@ func UploadFileHandler(c *gin.Context, db *sql.DB) {
 	}
 	defer src.Close()
 
-	// Обрабатываем файл на основе типа
 	switch fileType {
 	case "payments":
 		err = processPayments(src, db)
@@ -43,6 +40,8 @@ func UploadFileHandler(c *gin.Context, db *sql.DB) {
 		err = processBookings(src, db)
 	case "users":
 		err = processUsers(src, db)
+	case "reviews":
+		err = processReviews(src, db)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный тип файла"})
 		return
@@ -57,72 +56,224 @@ func UploadFileHandler(c *gin.Context, db *sql.DB) {
 }
 
 func processPayments(fileContent io.Reader, db *sql.DB) error {
-	scanner := bufio.NewScanner(fileContent)
-	for scanner.Scan() {
-		line := scanner.Text()
-		var payment models.Payment
-		_, err := fmt.Sscanf(line, "%d,%f", &payment.UserID, &payment.Amount)
-		if err != nil {
-			return fmt.Errorf("не удалось распарсить строку: %v", err)
-		}
+	f, err := excelize.OpenReader(fileContent)
+	if err != nil {
+		return fmt.Errorf("не удалось открыть XLSX-файл: %v", err)
+	}
+	defer f.Close()
 
-		_, err = services.NewPayment(db, payment)
-		if err != nil {
-			return fmt.Errorf("ошибка при сохранении платежа: %v", err)
-		}
+	sheetList := f.GetSheetList()
+	if len(sheetList) == 0 {
+		return fmt.Errorf("не удалось найти листы в XLSX-файле")
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("ошибка чтения файла: %v", err)
+	sheetName := sheetList[0]
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return fmt.Errorf("ошибка чтения строк с листа %s: %v", sheetName, err)
+	}
+
+	for i, row := range rows {
+		if i == 0 {
+			continue
+		}
+		if len(row) < 2 {
+			return fmt.Errorf("недостаточно данных в строке %d: %v", i+1, row)
+		}
+
+		userID, err := strconv.Atoi(row[0])
+		if err != nil {
+			return fmt.Errorf("не удалось распарсить UserID в строке %d: %v", i+1, err)
+		}
+		amount, err := strconv.ParseFloat(row[1], 64)
+		if err != nil {
+			return fmt.Errorf("не удалось распарсить Amount в строке %d: %v", i+1, err)
+		}
+
+		payment := models.Payment{UserID: userID, Amount: amount}
+		_, err = services.NewPayment(db, payment)
+		if err != nil {
+			return fmt.Errorf("ошибка при сохранении платежа в строке %d: %v", i+1, err)
+		}
 	}
 
 	return nil
 }
 
 func processBookings(fileContent io.Reader, db *sql.DB) error {
-	scanner := bufio.NewScanner(fileContent)
-	for scanner.Scan() {
-		line := scanner.Text()
-		var booking models.Booking
-		_, err := fmt.Sscanf(line, "%d,%d,%s", &booking.UserID, &booking.ParkingSlotID, &booking.StartTime)
-		if err != nil {
-			return fmt.Errorf("не удалось распарсить строку: %v", err)
-		}
+	f, err := excelize.OpenReader(fileContent)
+	if err != nil {
+		return fmt.Errorf("не удалось открыть XLSX-файл: %v", err)
+	}
+	defer f.Close()
 
-		_, err = services.CreateBooking(db, booking)
-		if err != nil {
-			return fmt.Errorf("ошибка при сохранении бронирования: %v", err)
-		}
+	sheetList := f.GetSheetList()
+	if len(sheetList) == 0 {
+		return fmt.Errorf("не удалось найти листы в XLSX-файле")
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("ошибка чтения файла: %v", err)
+	sheetName := sheetList[0]
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return fmt.Errorf("ошибка чтения строк с листа %s: %v", sheetName, err)
+	}
+
+	for i, row := range rows {
+		if i == 0 {
+			continue
+		}
+		if len(row) < 2 {
+			return fmt.Errorf("недостаточно данных в строке %d: %v", i+1, row)
+		}
+
+		userID, err := strconv.Atoi(row[0])
+		if err != nil {
+			return fmt.Errorf("не удалось распарсить UserID в строке %d: %v", i+1, err)
+		}
+		parkingSlotID, err := strconv.Atoi(row[1])
+		if err != nil {
+			return fmt.Errorf("не удалось распарсить ParkingSlotID в строке %d: %v", i+1, err)
+		}
+
+		// Используем текущее время
+		startTime := time.Now()
+
+		booking := models.Booking{UserID: userID, ParkingSlotID: parkingSlotID, StartTime: startTime}
+		_, err = services.CreateBooking(db, booking)
+		if err != nil {
+			return fmt.Errorf("ошибка при сохранении бронирования в строке %d: %v", i+1, err)
+		}
 	}
 
 	return nil
 }
 
+
 func processUsers(fileContent io.Reader, db *sql.DB) error {
-	scanner := bufio.NewScanner(fileContent)
-	for scanner.Scan() {
-		line := scanner.Text()
-		var user models.User
-		_, err := fmt.Sscanf(line, "%d,%s,%s", &user.ID, &user.Username, &user.Email)
+	f, err := excelize.OpenReader(fileContent)
+	if err != nil {
+		return fmt.Errorf("не удалось открыть XLSX-файл: %v", err)
+	}
+	defer f.Close()
+
+	sheetList := f.GetSheetList()
+	if len(sheetList) == 0 {
+		return fmt.Errorf("не удалось найти листы в XLSX-файле")
+	}
+
+	sheetName := sheetList[0]
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return fmt.Errorf("ошибка чтения строк с листа %s: %v", sheetName, err)
+	}
+
+	for i, row := range rows {
+		if i == 0 {
+			continue
+		}
+		if len(row) < 5 {
+			return fmt.Errorf("недостаточно данных в строке %d: %v", i+1, row)
+		}
+
+		id, err := strconv.Atoi(row[0])
 		if err != nil {
-			return fmt.Errorf("не удалось распарсить строку: %v", err)
+			return fmt.Errorf("не удалось распарсить ID в строке %d: %v", i+1, err)
+		}
+		username := row[1]
+		passwordHash := row[2]
+		email := row[3]
+
+		user := models.User{
+			ID:           id,
+			Username:     username,
+			PasswordHash: passwordHash,
+			Email:        email,
+			Balance:      0.0,
+			Vehicles:     []models.Vehicle{},
+			Membership:   nil,
 		}
 
 		_, err = services.CreateUser(db, user)
 		if err != nil {
-			return fmt.Errorf("ошибка при сохранении пользователя: %v", err)
+			return fmt.Errorf("ошибка при сохранении пользователя в строке %d: %v", i+1, err)
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("ошибка чтения файла: %v", err)
 	}
 
 	return nil
 }
+
+
+
+func processReviews(fileContent io.Reader, db *sql.DB) error {
+    // Читаем файл XLSX
+    f, err := excelize.OpenReader(fileContent)
+    if err != nil {
+        return fmt.Errorf("не удалось открыть XLSX-файл: %v", err)
+    }
+    defer f.Close()
+
+    // Получаем список листов
+    sheetList := f.GetSheetList()
+    if len(sheetList) == 0 {
+        return fmt.Errorf("не удалось найти листы в XLSX-файле")
+    }
+
+    fmt.Printf("Листы в файле: %v\n", sheetList) // Для отладки
+
+    // Берем первый лист
+    sheetName := sheetList[0]
+    if sheetName == "" {
+        return fmt.Errorf("не удалось определить имя первого листа")
+    }
+
+    fmt.Printf("Используемый лист: %s\n", sheetName) // Для отладки
+
+    rows, err := f.GetRows(sheetName)
+    if err != nil {
+        return fmt.Errorf("ошибка чтения строк с листа %s: %v", sheetName, err)
+    }
+
+    // Обрабатываем строки
+    for i, row := range rows {
+        // Пропускаем заголовок (первая строка)
+        if i == 0 {
+            continue
+        }
+
+        if len(row) < 3 {
+            return fmt.Errorf("недостаточно данных в строке %d: %v", i+1, row)
+        }
+
+        var review models.ReviewRequest
+
+        // Парсим UserID
+        userID, err := strconv.Atoi(row[0])
+        if err != nil {
+            return fmt.Errorf("не удалось распарсить UserID в строке %d: %v", i+1, err)
+        }
+        review.UserID = userID
+
+        // Парсим Rating
+        rating, err := strconv.Atoi(row[1])
+        if err != nil {
+            return fmt.Errorf("не удалось распарсить Rating в строке %d: %v", i+1, err)
+        }
+        review.Rating = rating
+
+        // Добавляем Comment
+        review.Comment = row[2]
+
+        // Сохраняем отзыв в базу данных
+        _, err = services.CreateNewReview(db, review)
+        if err != nil {
+            return fmt.Errorf("ошибка при сохранении отзыва в строке %d: %v", i+1, err)
+        }
+    }
+
+    return nil
+}
+
+
+
 
 

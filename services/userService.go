@@ -37,6 +37,46 @@ func CreateUser(db *sql.DB, user models.User) (models.User, error) {
     return user, nil
 }
 
+func CreateNewReview(dbConn *sql.DB, reviewRequest models.ReviewRequest) (models.Review, error) {
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return models.Review{}, fmt.Errorf("не удалось начать транзакцию: %v", err)
+	}
+
+	// Создаём новый объект отзыва
+	review := models.Review{
+		UserID:    reviewRequest.UserID,
+		Rating:    reviewRequest.Rating,
+		Comment:   reviewRequest.Comment,
+		CreatedAt: time.Now(),
+	}
+
+	query := `INSERT INTO reviews (user_id, rating, comment) 
+				OUTPUT INSERTED.id 
+				VALUES (@user_id, @rating, @comment)`
+
+	var reviewID int
+	err = tx.QueryRow(query,
+		sql.Named("user_id", review.UserID),
+		sql.Named("rating", review.Rating),
+		sql.Named("comment", review.Comment),
+	).Scan(&reviewID)
+
+	if err != nil {
+		tx.Rollback()
+		return models.Review{}, fmt.Errorf("ошибка при добавлении отзыва: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Review{}, fmt.Errorf("не удалось зафиксировать транзакцию: %v", err)
+	}
+
+	review.ID = reviewID
+	return review, nil
+}
+
+
+
 func NewPayment(db *sql.DB, payment models.Payment)(models.Payment, error){
 
     tx, err := db.Begin()

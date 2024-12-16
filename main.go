@@ -111,6 +111,7 @@ r.GET("/users", func(c *gin.Context) {
 	routes.BalanceRoutes(r)
 	routes.MembershipRoutes(r)
 	routes.ParkingSlotsRoutes(r)
+	routes.FileRoutes(r, dbConn)
 
     err = r.Run(":8000")
     if err != nil {

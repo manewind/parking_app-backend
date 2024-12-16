@@ -6,82 +6,55 @@ import (
     "backend/db"
     "github.com/gin-gonic/gin"
     "net/http"
-    "time"
-    "database/sql"
+    "backend/services"
 )
 
 func AddReviewHandler(c *gin.Context) {
-    var reviewRequest models.ReviewRequest
-    err := c.ShouldBindJSON(&reviewRequest)  // Привязываем данные с клиента
-    if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{
-            "error": "Неверный формат данных для отзыва",
-        })
-        fmt.Println("Ошибка при привязке данных:", err)  // Логируем ошибку
-        return
-    }
+	var reviewRequest models.ReviewRequest
 
-    // Логируем полученные данные от клиента, включая user_id
-    fmt.Println("Полученные данные от клиента:", reviewRequest)
+	if err := c.ShouldBindJSON(&reviewRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Неверный формат данных для отзыва",
+		})
+		fmt.Println("Ошибка при привязке данных:", err) 
+		return
+	}
 
-    // Проверка на наличие user_id
-    if reviewRequest.UserID == 0 {
-        fmt.Println("Ошибка: user_id не может быть равен 0")
-        c.JSON(http.StatusBadRequest, gin.H{
-            "error": "user_id не может быть равен 0",
-        })
-        return
-    }
+	// Проверка на наличие user_id
+	if reviewRequest.UserID == 0 {
+		fmt.Println("Ошибка: user_id не может быть равен 0")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "user_id не может быть равен 0",
+		})
+		return
+	}
 
-    // Подключение к базе данных
-    dbConn, err := db.ConnectToDB()
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "error": fmt.Sprintf("Ошибка при подключении к базе данных: %v", err),
-        })
-        fmt.Println("Ошибка подключения к базе данных:", err)  // Логируем ошибку подключения
-        return
-    }
-    defer dbConn.Close()
+	dbConn, err := db.ConnectToDB()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка подключения к базе данных: %v", err),
+		})
+		fmt.Println("Ошибка подключения к базе данных:", err)
+		return
+	}
+	defer dbConn.Close()
 
-    // Создаём новый отзыв
-    review := models.Review{
-        UserID:    reviewRequest.UserID,
-        Rating:    reviewRequest.Rating,
-        Comment:   reviewRequest.Comment,
-        CreatedAt: time.Now(),
-    }
+	// Логика создания нового отзыва
+	review, err := services.CreateNewReview(dbConn, reviewRequest)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Ошибка при добавлении отзыва: %v", err),
+		})
+		fmt.Println("Ошибка при добавлении отзыва:", err)
+		return
+	}
 
-    fmt.Println("Запрос на добавление отзыва:", review) 
-
-    query := `INSERT INTO reviews (user_id, rating, comment) 
-				OUTPUT INSERTED.id 
-				VALUES (@user_id, @rating, @comment)` 
-
-    fmt.Println("Запрос:", query)  
-
-    var reviewID int
-    err = dbConn.QueryRow(query,
-        sql.Named("user_id", review.UserID),
-        sql.Named("rating", review.Rating),
-        sql.Named("comment", review.Comment),
-    ).Scan(&reviewID)
-
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "error": fmt.Sprintf("Ошибка при добавлении отзыва: %v", err),
-        })
-        fmt.Println("Ошибка при выполнении запроса:", err)  
-        return
-    }
-
-    review.ID = reviewID
-    fmt.Println("Отзыв успешно добавлен, ID:", reviewID)  
-    c.JSON(http.StatusOK, gin.H{
-        "message": "Отзыв успешно добавлен",
-        "review": review,
-    })
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Отзыв успешно добавлен",
+		"review": review,
+	})
 }
+
 
 
 func GetReviewsHandler(c *gin.Context) {
