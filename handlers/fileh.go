@@ -169,28 +169,22 @@ func processUsers(fileContent io.Reader, db *sql.DB) error {
 
 	for i, row := range rows {
 		if i == 0 {
+			// Пропускаем заголовок
 			continue
 		}
-		if len(row) < 5 {
+		if len(row) < 3 { // Учитываем только 4 столбца: id, username, password_hash, email
 			return fmt.Errorf("недостаточно данных в строке %d: %v", i+1, row)
 		}
 
-		id, err := strconv.Atoi(row[0])
-		if err != nil {
-			return fmt.Errorf("не удалось распарсить ID в строке %d: %v", i+1, err)
-		}
-		username := row[1]
-		passwordHash := row[2]
-		email := row[3]
+		username := row[0]
+		passwordHash := row[1]
+		email := row[2]
 
+		// Создаем пользователя только с необходимыми полями
 		user := models.User{
-			ID:           id,
 			Username:     username,
 			PasswordHash: passwordHash,
 			Email:        email,
-			Balance:      0.0,
-			Vehicles:     []models.Vehicle{},
-			Membership:   nil,
 		}
 
 		_, err = services.CreateUser(db, user)
@@ -201,6 +195,7 @@ func processUsers(fileContent io.Reader, db *sql.DB) error {
 
 	return nil
 }
+
 
 
 
